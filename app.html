@@ -359,13 +359,19 @@
   function methodsFor(cur) {
     const wire = { id: 'wire', title: 'Wire transfer (7–10 days)', body: 'Earn at least USD 100 to get paid. Wire transfers are sent over SWIFT in USD and may have higher fees.',
       chips: [['bad', 'Intermediary bank fees'], ['', 'SWIFT']] };
+    // Currencies with no local Wise rail (INR, AED) still offer Wise, paid in USD over US ACH.
+    const usd = LOCAL_RAILS.USD;
+    const wiseUsd = { id: 'wise', title: `Wise account (${usd.speed})`, tag: 'rec', switchTo: 'USD',
+      body: `Get paid in USD to your Wise account through ${usd.scheme}, instead of being converted by your bank. Convert to ${CREATOR.localCurrency} at the mid-market rate whenever you choose.`,
+      chips: [['good', 'Lower conversion fees'], ['good', `Paid in USD via ${usd.scheme}`], ['', 'No SWIFT fees']] };
     if (cur === 'INR') return [
+      wiseUsd,
       { id: 'bank', title: 'Bank transfer (2–3 days)', tag: 'cur', body: `Get paid in INR to ${CREATOR.bank} ••••${CREATOR.bankLast4}. Your USD earnings are converted before they reach you.`,
         chips: [['bad', 'Conversion fees'], ['', 'Local transfer']] },
       wire,
     ];
     const rail = LOCAL_RAILS[cur];
-    if (!rail) return [wire];
+    if (!rail) return [wiseUsd, wire];
     return [
       { id: 'wise', title: `Wise account (${rail.speed})`, tag: 'rec', body: `Receive ${cur} through local ${rail.scheme} payments instead of SWIFT. Hold it, or convert to INR at the mid-market rate whenever you choose.`,
         chips: [['good', 'Lower conversion fees'], ['good', `Local ${rail.scheme}`], ['', 'No SWIFT fees']] },
@@ -559,7 +565,7 @@
     const cur = state.currency, rail = LOCAL_RAILS[cur];
     const isLocal = cur === CREATOR.localCurrency;
     const note = cur === 'INR'
-      ? `<div class="banner warning"><span class="bi">${I.warn}</span><div><div class="bt">INR payouts are converted first</div><div class="bb">Your USD earnings are converted by intermediary banks before they reach you. Choose USD to unlock a lower-fee Wise account.</div>
+      ? `<div class="banner warning"><span class="bi">${I.warn}</span><div><div class="bt">INR payouts are converted first</div><div class="bb">Your USD earnings are converted by intermediary banks before they reach you. Choose USD, or pick a Wise account on the next step, to avoid this.</div>
          <button class="link" style="margin-top:8px;font-size:14px" data-action="pickcur" data-cur="USD">Switch to USD</button></div></div>`
       : rail ? `<div class="banner positive"><span class="bi">${I.checkCircle}</span><div><div class="bt">Unlocks local ${rail.scheme} payments</div><div class="bb">Get paid in ${cur} through a Wise account in ${rail.speed.toLowerCase()}, with no SWIFT wire fees.</div></div></div>`
       : `<div class="banner info"><span class="bi">${I.info}</span><div><div class="bt">Only wire transfers available</div><div class="bb">${cur} payouts can only be sent by SWIFT wire transfer, which can have higher fees.</div></div></div>`;
@@ -586,7 +592,7 @@
         ${list.map(m => `<div class="option ${state.method === m.id ? 'selected' : ''}" data-action="method" data-id="${m.id}" role="radio" aria-checked="${state.method === m.id}">
             <span class="radio"></span><div style="flex:1"><div class="ot">${m.title}${m.tag === 'rec' ? '<span class="tag rec">RECOMMENDED</span>' : m.tag === 'cur' ? '<span class="tag cur">CURRENT</span>' : ''}</div>
             <div class="ob">${m.body}</div><div class="chips">${m.chips.map(([k, t]) => `<span class="chip ${k}">${t}</span>`).join('')}</div></div></div>`).join('')}
-        ${cur === 'INR' ? `<div class="banner info" style="margin-top:16px"><span class="bi">${I.info}</span><div><div class="bb">Want lower fees? <button class="link" data-action="back">Choose USD</button> or another supported currency to unlock a Wise account.</div></div></div>` : ''}`,
+        ${state.method === 'wise' && !LOCAL_RAILS[cur] ? `<div class="banner info" style="margin-top:16px"><span class="bi">${I.info}</span><div><div class="bb">Your payout currency will change from ${cur} to <b style="color:var(--text)">USD</b>, so you can get paid through your Wise account.</div></div></div>` : ''}`,
       foot: `<button class="btn btn-primary" data-action="methodNext">${cta}</button>
         ${state.method === 'bank' ? '' : `<p class="legal">By tapping <b>Continue</b>, you agree to let Instagram store your payout info and send direct deposits of payments to the payout method that you've selected. Your info may be shared with payout processing providers.</p>`}`,
     });
@@ -775,7 +781,11 @@
         if (state.method === 'bank') {
           state.history = ['dash']; state.screen = 'payouts'; state.dir = 'back'; render();
           toast('No changes made to your payout method');
-        } else { state.showErrors = false; state.nameError = false; go(state.method === 'wise' ? 'haveWise' : 'details'); }
+        } else {
+          state.showErrors = false; state.nameError = false;
+          if (state.method === 'wise' && !LOCAL_RAILS[state.currency]) { state.currency = 'USD'; toast('Payout currency changed to USD for your Wise account'); }
+          go(state.method === 'wise' ? 'haveWise' : 'details');
+        }
         break;
       case 'hasWise': state.hasWise = el.dataset.id; softRender(); break;
       case 'haveWiseNext': go(state.hasWise === 'yes' ? 'details' : 'leave'); break;
