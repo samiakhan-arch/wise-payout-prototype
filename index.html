@@ -35,6 +35,7 @@
   <div class="controls">
     <button class="primary" data-msg="restart">Restart both</button>
     <button data-msg="mismatch">Trigger name mismatch on next verification</button>
+    <button data-msg="demodata">Reset demo data</button>
     <a href="app.html?theme=light" target="_blank">Open light on phone ↗</a>
     <a href="app.html?theme=dark" target="_blank">Open dark on phone ↗</a>
   </div>
@@ -56,7 +57,7 @@
     <li><b>Account details</b> (step 4): name and country are pre-filled and locked. The fields change with the payment rail and are checked as you type, with inline help.</li>
     <li><b>Verifying</b>, with an optional <b>name mismatch</b> error. Then <b>Review and confirm</b> (step 5), then <b>Success</b> with a "Make default" switch, and back to Payouts with the new method showing.</li>
   </ol>
-  <p>All data is mock data. Exchange-rate figures are examples only.</p>
+  <p>Every field is pre-filled with fake details that pass validation, so you can tap Continue all the way through. Clear a field to see its error message, or use <b>Reset demo data</b> to put the fake values back. All data is mock data, and exchange-rate figures are examples only.</p>
 </section>
 <script>
   document.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', () =>

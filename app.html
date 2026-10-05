@@ -272,6 +272,7 @@
   <a id="themeLink" href="#">Switch theme</a>
   <button data-demo="restart">Restart flow</button>
   <button data-demo="mismatch">Trigger name mismatch</button>
+  <button data-demo="demodata">Reset demo data</button>
   <a href="./">Side-by-side view</a>
 </div>
 
@@ -375,11 +376,26 @@
   const fieldsFor = () => state.method === 'wire' ? WIRE_FIELDS : (LOCAL_RAILS[state.currency]?.fields || []);
   const isWise = () => state.method === 'wise';
 
+  // Fake details that pass validation, per currency (and for wire), so the flow can be clicked straight through.
+  const DEMO_VALUES = {
+    USD: { acct: '8310123456789', routing: '026073150' },
+    EUR: { iban: 'BE71 9670 0000 0000' },
+    GBP: { acct: '12345678', sort: '23-14-70' },
+    AUD: { acct: '123456789', bsb: '062000' },
+    CAD: { acct: '1234567', transit: '00112345' },
+    SGD: { acct: '123456789', bankcode: '7171' },
+    wire: { wbank: 'HDFC Bank', wacct: '50100234567891', swift: 'HDFCINBB' },
+  };
+  const demoValues = () => JSON.parse(JSON.stringify(DEMO_VALUES));
+  const scope = () => state.method === 'wire' ? 'wire' : state.currency;
+  const getVal = k => k === 'email' ? state.email : (state.values[scope()]?.[k] ?? '');
+  const setVal = (k, v) => { if (k === 'email') state.email = v; else (state.values[scope()] ||= {})[k] = v; };
+
   // ---------- State ----------
   const fresh = () => ({
     screen: 'dash', history: [], dir: 'fwd',
     currency: CREATOR.localCurrency, method: defaultMethod(CREATOR.localCurrency), hasWise: 'yes',
-    values: { email: CREATOR.email }, errors: {}, showErrors: false,
+    email: CREATOR.email, values: demoValues(), errors: {}, showErrors: false,
     forceMismatch: false, nameError: false,
     makeDefault: true, connected: null, sheet: false, toast: null, verifyStep: 0,
   });
@@ -596,7 +612,7 @@
   const fieldHtml = f => {
     const err = state.showErrors && state.errors[f.key];
     return `<div class="field ${err ? 'err' : ''}" data-fieldwrap="${f.key}"><label for="f-${f.key}">${f.label}</label>
-      <input class="input" id="f-${f.key}" data-field="${f.key}" placeholder="${esc(f.ph)}" value="${esc(state.values[f.key])}" ${f.inputmode ? `inputmode="${f.inputmode}"` : ''} autocomplete="off" autocapitalize="characters" spellcheck="false" />
+      <input class="input" id="f-${f.key}" data-field="${f.key}" placeholder="${esc(f.ph)}" value="${esc(getVal(f.key))}" ${f.inputmode ? `inputmode="${f.inputmode}"` : ''} autocomplete="off" autocapitalize="characters" spellcheck="false" />
       <div class="error">${I.error}<span>${esc(err || '')}</span></div></div>`;
   };
   const EMAIL_FIELD = { key: 'email', label: 'Wise account email', ph: 'name@example.com', validate: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) ? null : 'Enter a valid email address' };
@@ -646,8 +662,8 @@
             <div class="method-logo ${wise ? 'wise' : 'bank'}">${wise ? 'W' : I.globe}</div>
             <div><div class="mt">${wise ? 'Wise account' : 'Wire transfer'}</div><div class="ms">${wise ? `${rail.scheme} · ${rail.speed}` : 'SWIFT · 7–10 days'}</div></div></div>
           <div class="kv"><span class="k">Account holder</span><span class="v">${CREATOR.name}</span></div>
-          ${wise ? `<div class="kv"><span class="k">Wise email</span><span class="v">${esc(state.values.email)}</span></div>` : ''}
-          ${fields.map(f => `<div class="kv"><span class="k">${f.label}</span><span class="v">${f.key === 'wbank' ? esc(state.values[f.key]) : f.key === 'swift' ? esc(state.values[f.key].toUpperCase()) : mask(state.values[f.key])}</span></div>`).join('')}
+          ${wise ? `<div class="kv"><span class="k">Wise email</span><span class="v">${esc(state.email)}</span></div>` : ''}
+          ${fields.map(f => `<div class="kv"><span class="k">${f.label}</span><span class="v">${f.key === 'wbank' ? esc(getVal(f.key)) : f.key === 'swift' ? esc(getVal(f.key).toUpperCase()) : mask(getVal(f.key))}</span></div>`).join('')}
           <div class="kv"><span class="k">Payout currency</span><span class="v">${wise ? curLabel(cur) : '🇺🇸 USD'}</span></div>
           <div class="kv"><span class="k">Minimum payout</span><span class="v">${wise ? 'USD 25' : 'USD 100'}</span></div>
         </div>
@@ -664,7 +680,7 @@
       body: `${hero(ILLO.success(), wise ? 'Wise account added' : 'Wire transfer added',
           wise ? `You can now get paid in ${state.currency} through ${LOCAL_RAILS[state.currency].scheme}, with lower conversion fees.` : 'You can now get paid by SWIFT wire transfer.')}
         <div class="card"><div class="caption">Next payout</div><div class="big-amt">${CREATOR.nextPayout}</div>
-          <div class="caption">Expected ${CREATOR.nextDate} · to ${state.makeDefault ? (wise ? `Wise ${mask(state.values.acct || state.values.iban)}` : `${esc(state.values.wbank)} ${mask(state.values.wacct)}`) : `${CREATOR.bank} ••••${CREATOR.bankLast4}`}</div></div>
+          <div class="caption">Expected ${CREATOR.nextDate} · to ${state.makeDefault ? (wise ? `Wise ${mask(getVal('acct') || getVal('iban'))}` : `${esc(getVal('wbank'))} ${mask(getVal('wacct'))}`) : `${CREATOR.bank} ••••${CREATOR.bankLast4}`}</div></div>
         <div class="toggle-row" data-action="toggleDefault"><div><div class="tt">Make this my default payout method</div>
           <div class="ts">${state.makeDefault ? 'All future payouts will go here' : `Payouts will keep going to ${CREATOR.bank}`}</div></div>
           <span class="switch ${state.makeDefault ? 'on' : ''}" role="switch" aria-checked="${state.makeDefault}"></span></div>`,
@@ -716,7 +732,7 @@
   function validateAll() {
     const fs = (isWise() ? [EMAIL_FIELD] : []).concat(fieldsFor());
     state.errors = {};
-    fs.forEach(f => { const e = f.validate(state.values[f.key] || ''); if (e) state.errors[f.key] = e; });
+    fs.forEach(f => { const e = f.validate(getVal(f.key)); if (e) state.errors[f.key] = e; });
     return Object.keys(state.errors).length === 0;
   }
   function startVerify() {
@@ -784,7 +800,7 @@
         state.connected = {
           method: state.method, currency: state.currency, isDefault: state.makeDefault,
           rail: wise ? LOCAL_RAILS[state.currency].scheme : 'SWIFT',
-          last4: mask(wise ? (state.values.acct || state.values.iban) : state.values.wacct), bank: state.values.wbank,
+          last4: mask(wise ? (getVal('acct') || getVal('iban')) : getVal('wacct')), bank: getVal('wbank'),
         };
         state.history = ['dash']; state.screen = 'payouts'; state.dir = 'back'; render(); break;
       }
@@ -795,7 +811,7 @@
   phone.addEventListener('input', e => {
     const key = e.target.dataset.field;
     if (!key) return;
-    state.values[key] = e.target.value;
+    setVal(key, e.target.value);
     if (!state.showErrors) return;
     const f = [EMAIL_FIELD, ...fieldsFor()].find(x => x.key === key);
     const err = f.validate(e.target.value);
@@ -806,15 +822,21 @@
   });
 
   function restart() { verifyTimers.forEach(clearTimeout); state = fresh(); render(); }
+  function resetDemoData() {
+    state.email = CREATOR.email; state.values = demoValues(); state.errors = {}; state.showErrors = false; state.nameError = false;
+    softRender(); toast('Demo data restored');
+  }
   function armMismatch() { state.forceMismatch = true; toast('Next Wise verification will fail with a name mismatch'); }
   document.getElementById('demo').addEventListener('click', e => {
     const d = e.target.dataset.demo;
     if (d === 'restart') restart();
     if (d === 'mismatch') armMismatch();
+    if (d === 'demodata') resetDemoData();
   });
   window.addEventListener('message', e => {
     if (e.data === 'restart') restart();
     if (e.data === 'mismatch') armMismatch();
+    if (e.data === 'demodata') resetDemoData();
   });
 
   render();
