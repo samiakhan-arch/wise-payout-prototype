@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Instagram · Add Wise payout method (prototype)</title>
+<style>
+  /* Tokens approximated from Meta's public design language (Meta blue, neutral greys, 8pt grid). */
+  :root, [data-theme="light"] {
+    --bg: #FFFFFF;
+    --surface: #F1F4F7;
+    --surface-2: #E4E9EE;
+    --text: #1C2B33;
+    --text-2: #5D6C7B;
+    --text-3: #8595A4;
+    --divider: #DEE3E9;
+    --border: #CBD2D9;
+    --primary: #0064E0;
+    --primary-pressed: #0050B5;
+    --primary-soft: #E5F0FF;
+    --on-primary: #FFFFFF;
+    --positive: #1E8A3C;
+    --positive-soft: #E6F4EA;
+    --negative: #D31A38;
+    --negative-soft: #FDECEF;
+    --warning: #B26A00;
+    --warning-soft: #FFF4E0;
+    --overlay: rgba(28, 43, 51, .45);
+    --frame: #0B1014;
+  }
+  [data-theme="dark"] {
+    --bg: #0C1014;
+    --surface: #1A2126;
+    --surface-2: #232C33;
+    --text: #E8EBEE;
+    --text-2: #A8B3BD;
+    --text-3: #77838E;
+    --divider: #262F36;
+    --border: #3A454E;
+    --primary: #2D88FF;
+    --primary-pressed: #1A6FE0;
+    --primary-soft: #10233D;
+    --on-primary: #FFFFFF;
+    --positive: #4BC46D;
+    --positive-soft: #12281A;
+    --negative: #FF5C72;
+    --negative-soft: #33141A;
+    --warning: #F7B928;
+    --warning-soft: #2E2410;
+    --overlay: rgba(0, 0, 0, .6);
+    --frame: #000;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: "Optimistic Text", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #E9EDF1;
+    color: var(--text);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; padding: 24px 0;
+  }
+  body[data-theme="dark"] { background: #05080A; }
+  body.embed { background: var(--bg); padding: 0; display: block; }
+
+  .phone {
+    width: 390px; height: 844px; border-radius: 54px; overflow: hidden; position: relative;
+    background: var(--bg); border: 10px solid var(--frame);
+    box-shadow: 0 30px 80px rgba(0,0,0,.25), 0 0 0 1px rgba(255,255,255,.06) inset;
+  }
+  .embed .phone, .fullbleed .phone { width: 100vw; height: 100vh; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  @media (max-width: 440px) {
+    body:not(.embed) { padding: 0; display: block; background: var(--bg); }
+    body:not(.embed) .phone { width: 100vw; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+    .demo { display: none !important; }
+  }
+
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); animation: in .22s ease; }
+  .screen.back-anim { animation: inBack .22s ease; }
+  @keyframes in { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+  @keyframes inBack { from { transform: translateX(-24px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+  .status { height: 59px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 14px 32px 0 40px; font-weight: 600; font-size: 16px; position: relative; }
+  .status .icons { display: flex; gap: 6px; align-items: center; }
+  .status::after { content: ""; position: absolute; left: 50%; top: 12px; width: 120px; height: 34px; margin-left: -60px; border-radius: 20px; background: #000; }
+  .header { margin-top: 4px; }
+  /* On a real phone the OS draws the status bar, so reserve the safe area instead. */
+  @media (max-width: 440px) {
+    body:not(.embed) .status { display: none; }
+    body:not(.embed) .screen { padding-top: max(16px, env(safe-area-inset-top)); }
+  }
+
+  .header { height: 52px; flex: 0 0 auto; display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; padding: 0 4px; }
+  .header h1 { margin: 0; font-size: 17px; font-weight: 700; text-align: center; letter-spacing: -.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; background: none; border: 0; color: var(--text); cursor: pointer; border-radius: 22px; }
+  .icon-btn:active { background: var(--surface); }
+  .header.bordered { border-bottom: 1px solid var(--divider); }
+
+  .progress { display: flex; gap: 4px; flex: 0 0 auto; }
+  .progress span { flex: 1; height: 3px; background: var(--surface-2); transition: background .3s; }
+  .progress span.on:nth-child(1) { background: #F58529; }
+  .progress span.on:nth-child(2) { background: #EE3A5C; }
+  .progress span.on:nth-child(3) { background: #DD2A7B; }
+  .progress span.on:nth-child(4) { background: #C13584; }
+  .progress span.on:nth-child(5) { background: #8134AF; }
+
+  .content { flex: 1; overflow-y: auto; padding: 8px 20px 24px; scrollbar-width: none; }
+  .content::-webkit-scrollbar { display: none; }
+  .content.flush { padding: 0 0 24px; }
+  .footer { flex: 0 0 auto; padding: 12px 16px 28px; border-top: 1px solid var(--divider); background: var(--bg); }
+  @media (max-width: 440px) { body:not(.embed) .footer { padding-bottom: max(16px, env(safe-area-inset-bottom)); } }
+
+  .illo { display: flex; justify-content: center; margin: 20px 0 16px; color: var(--text); }
+  .hero-title { font-size: 26px; line-height: 32px; font-weight: 700; text-align: center; margin: 0 0 10px; letter-spacing: -.3px; }
+  .hero-body { font-size: 15px; line-height: 21px; color: var(--text-2); text-align: center; margin: 0 8px 24px; }
+  .link { color: var(--primary); font-weight: 600; text-decoration: none; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+
+  .btn { width: 100%; height: 48px; border-radius: 12px; border: 0; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background .15s, opacity .15s; }
+  .btn-primary { background: var(--primary); color: var(--on-primary); }
+  .btn-primary:active { background: var(--primary-pressed); }
+  .btn-primary[disabled] { opacity: .4; cursor: default; }
+  .btn-secondary { background: var(--surface); color: var(--text); margin-top: 8px; }
+  .btn-text { background: none; color: var(--primary); height: 40px; margin-top: 4px; }
+  .legal { font-size: 12px; line-height: 17px; color: var(--text-2); text-align: center; margin: 12px 4px 0; }
+  .legal b { color: var(--text); font-weight: 600; }
+
+  .section-title { font-size: 16px; font-weight: 700; margin: 24px 0 8px; }
+  .section-title.first { margin-top: 8px; }
+  .caption { font-size: 13px; line-height: 18px; color: var(--text-2); }
+
+  .list-row { display: flex; align-items: center; gap: 14px; padding: 13px 20px; cursor: pointer; }
+  .list-row:active { background: var(--surface); }
+  .list-row .grow { flex: 1; min-width: 0; }
+  .list-row .t { font-size: 16px; }
+  .list-row .s { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--primary); color: #fff; }
+  .dot { width: 8px; height: 8px; border-radius: 4px; background: var(--negative); }
+  .list-heading { font-size: 16px; font-weight: 700; padding: 18px 20px 6px; }
+  .divider { height: 1px; background: var(--divider); margin: 10px 0; }
+
+  .card { background: var(--surface); border-radius: 16px; padding: 16px; }
+  .card + .card { margin-top: 12px; }
+  .banner { display: flex; gap: 12px; padding: 14px 16px; border-radius: 16px; align-items: flex-start; }
+  .banner .bt { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .banner .bb { font-size: 14px; line-height: 19px; color: var(--text-2); }
+  .banner.warning { background: var(--warning-soft); }
+  .banner.warning .bi { color: var(--warning); }
+  .banner.positive { background: var(--positive-soft); }
+  .banner.positive .bi { color: var(--positive); }
+  .banner.negative { background: var(--negative-soft); }
+  .banner.negative .bi { color: var(--negative); }
+  .banner.info { background: var(--primary-soft); }
+  .banner.info .bi { color: var(--primary); }
+  .banner .bi { flex: 0 0 auto; margin-top: 1px; }
+
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; font-size: 15px; border-bottom: 1px solid var(--divider); }
+  .kv:last-child { border-bottom: 0; }
+  .kv .k { color: var(--text-2); }
+  .kv .v { font-weight: 600; text-align: right; }
+
+  .edu-item { display: flex; gap: 14px; padding: 14px 0; }
+  .edu-item .ei { flex: 0 0 40px; height: 40px; border-radius: 20px; background: var(--surface); display: grid; place-items: center; color: var(--text); }
+  .edu-item .et { font-weight: 700; font-size: 15px; margin-bottom: 3px; }
+  .edu-item .eb { font-size: 14px; line-height: 20px; color: var(--text-2); }
+
+  .compare { margin-top: 10px; border: 1px solid var(--divider); border-radius: 14px; overflow: hidden; }
+  .compare .row { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; font-size: 14px; }
+  .compare .row + .row { border-top: 1px solid var(--divider); }
+  .compare .amt { font-weight: 700; font-size: 16px; }
+  .compare .win { background: var(--positive-soft); }
+  .compare .win .amt { color: var(--positive); }
+  .compare .foot { padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--positive); border-top: 1px solid var(--divider); }
+
+  .option { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border: 1.5px solid var(--divider); border-radius: 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .option + .option { margin-top: 12px; }
+  .option.selected { border-color: var(--primary); background: var(--primary-soft); }
+  .option .ot { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .option .ob { font-size: 14px; line-height: 20px; color: var(--text-2); margin-top: 4px; }
+  .option .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .chip { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+  .chip.good { background: var(--positive-soft); color: var(--positive); }
+  .chip.bad { background: var(--warning-soft); color: var(--warning); }
+  .tag { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; letter-spacing: .2px; }
+  .tag.rec { background: var(--primary); color: #fff; }
+  .tag.cur { background: var(--surface-2); color: var(--text-2); }
+  .radio { flex: 0 0 22px; width: 22px; height: 22px; border-radius: 11px; border: 2px solid var(--border); margin-top: 1px; display: grid; place-items: center; }
+  .selected .radio { border-color: var(--primary); }
+  .selected .radio::after { content: ""; width: 12px; height: 12px; border-radius: 6px; background: var(--primary); }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; color: var(--text-2); margin: 0 0 6px 2px; }
+  .input { width: 100%; height: 52px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-size: 16px; padding: 0 14px; outline: none; transition: border-color .15s; }
+  .input:focus { border-color: var(--primary); }
+  .input::placeholder { color: var(--text-3); }
+  .field.err .input { border-color: var(--negative); }
+  .field .help { font-size: 13px; color: var(--text-2); margin: 6px 2px 0; line-height: 18px; }
+  .field .error { font-size: 13px; color: var(--negative); margin: 6px 2px 0; display: none; align-items: center; gap: 6px; }
+  .field.err .error { display: flex; }
+  .field.err .help { display: none; }
+  .locked { display: flex; align-items: center; gap: 10px; height: 52px; border-radius: 12px; background: var(--surface); padding: 0 14px; font-size: 16px; color: var(--text); }
+  .locked .lk { margin-left: auto; color: var(--text-3); display: flex; }
+  .select { display: flex; align-items: center; gap: 12px; height: 60px; border-radius: 12px; border: 1.5px solid var(--border); padding: 0 14px; cursor: pointer; background: var(--bg); }
+  .select:active { border-color: var(--primary); }
+  .select .flag { font-size: 26px; line-height: 1; }
+  .select .sv { font-size: 16px; font-weight: 600; }
+  .select .ss { font-size: 13px; color: var(--text-2); }
+  .select .chev { margin-left: auto; color: var(--text-2); display: flex; }
+
+  .group-label { font-size: 13px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .4px; margin: 22px 0 10px; }
+  .help-box { border-radius: 14px; background: var(--surface); margin: 6px 0 16px; overflow: hidden; }
+  .help-box summary { list-style: none; padding: 14px 16px; display: flex; gap: 10px; align-items: center; font-weight: 600; font-size: 15px; cursor: pointer; }
+  .help-box summary::-webkit-details-marker { display: none; }
+  .help-box summary .chev { margin-left: auto; transition: transform .2s; color: var(--text-2); display: flex; }
+  .help-box[open] summary .chev { transform: rotate(180deg); }
+  .help-box ol { margin: 0; padding: 0 16px 16px 38px; font-size: 14px; line-height: 21px; color: var(--text-2); }
+  .help-box ol b { color: var(--text); }
+  .pill-link { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-2); background: var(--surface); padding: 8px 12px; border-radius: 999px; margin: 0 auto 20px; cursor: pointer; }
+  .pill-link b { color: var(--text); }
+  .center { text-align: center; }
+
+  .toggle-row { display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 16px; background: var(--surface); margin-top: 16px; cursor: pointer; }
+  .toggle-row .tt { font-weight: 600; font-size: 15px; }
+  .toggle-row .ts { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+  .switch { margin-left: auto; flex: 0 0 51px; width: 51px; height: 31px; border-radius: 16px; background: var(--border); position: relative; transition: background .2s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 14px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .2s; }
+  .switch.on { background: var(--primary); }
+  .switch.on::after { transform: translateX(20px); }
+
+  .spinner { width: 56px; height: 56px; border-radius: 50%; border: 4px solid var(--surface-2); border-top-color: var(--primary); animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .verify-steps { margin: 28px auto 0; width: 260px; }
+  .verify-steps div { display: flex; gap: 10px; align-items: center; font-size: 15px; color: var(--text-2); padding: 6px 0; opacity: .35; transition: opacity .3s; }
+  .verify-steps div.done { opacity: 1; color: var(--text); }
+  .verify-steps div.done svg { color: var(--positive); }
+
+  .sheet-wrap { position: absolute; inset: 0; background: var(--overlay); display: flex; align-items: flex-end; z-index: 20; animation: fade .2s ease; }
+  @keyframes fade { from { opacity: 0; } }
+  .sheet { background: var(--bg); width: 100%; max-height: 82%; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; animation: up .25s ease; }
+  @keyframes up { from { transform: translateY(40px); } }
+  .sheet .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto 4px; }
+  .sheet .sh { font-size: 17px; font-weight: 700; text-align: center; padding: 8px 0 12px; border-bottom: 1px solid var(--divider); }
+  .sheet .sb { overflow-y: auto; padding: 0 0 24px; }
+  .sheet .grp { font-size: 13px; font-weight: 700; color: var(--text-2); padding: 16px 20px 6px; }
+  .cur-row { display: flex; gap: 14px; align-items: center; padding: 12px 20px; cursor: pointer; }
+  .cur-row:active { background: var(--surface); }
+  .cur-row .flag { font-size: 28px; }
+  .cur-row .ct { font-size: 16px; font-weight: 600; }
+  .cur-row .cs { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+  .cur-row .ck { margin-left: auto; color: var(--primary); display: flex; }
+
+  .toast { position: absolute; left: 16px; right: 16px; bottom: 110px; z-index: 30; background: var(--text); color: var(--bg); padding: 14px 16px; border-radius: 14px; font-size: 15px; font-weight: 500; display: flex; gap: 10px; align-items: center; box-shadow: 0 8px 24px rgba(0,0,0,.25); animation: up .25s ease; }
+
+  .method-card { display: flex; gap: 14px; align-items: center; }
+  .method-logo { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 18px; flex: 0 0 auto; }
+  .method-logo.wise { background: #9FE870; color: #163300; }
+  .method-logo.bank { background: var(--surface-2); color: var(--text); }
+  .method-card .mt { font-weight: 600; font-size: 16px; display: flex; gap: 8px; align-items: center; }
+  .method-card .ms { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+  .big-amt { font-size: 32px; font-weight: 700; letter-spacing: -.5px; margin: 4px 0; }
+  .hist { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--divider); font-size: 15px; }
+  .hist:last-child { border-bottom: 0; }
+  .hist .hs { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+
+  .demo { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-family: -apple-system, system-ui, sans-serif; }
+  .demo button, .demo a { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(128,128,128,.35); background: rgba(128,128,128,.12); color: inherit; cursor: pointer; text-decoration: none; }
+  body[data-theme="dark"] .demo { color: #E8EBEE; }
+  .embed .demo { display: none; }
+</style>
+</head>
+<body>
+<div class="phone" id="phone"></div>
+<div class="demo" id="demo">
+  <a id="themeLink" href="#">Switch theme</a>
+  <button data-demo="restart">Restart flow</button>
+  <button data-demo="mismatch">Trigger name mismatch</button>
+  <a href="./">Side-by-side view</a>
+</div>
+
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+  const embed = params.get('embed') === '1';
+  document.body.dataset.theme = theme;
+  if (embed) document.body.classList.add('embed');
+  const themeLink = document.getElementById('themeLink');
+  themeLink.href = `?theme=${theme === 'dark' ? 'light' : 'dark'}`;
+  themeLink.textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
+
+  // ---------- Mock creator ----------
+  const CREATOR = {
+    name: 'Priya Sharma', country: 'India', countryCode: 'IN', localCurrency: 'INR',
+    email: 'priya.sharma@gmail.com', bank: 'HDFC Bank', bankLast4: '4821',
+    nextPayout: '$612.40', nextDate: '15 Oct',
+  };
+
+  // ---------- Currency & rail catalogue ----------
+  const CURRENCIES = {
+    INR: { flag: '🇮🇳', name: 'Indian rupee' },
+    USD: { flag: '🇺🇸', name: 'US dollar' },
+    EUR: { flag: '🇪🇺', name: 'Euro' },
+    GBP: { flag: '🇬🇧', name: 'British pound' },
+    AUD: { flag: '🇦🇺', name: 'Australian dollar' },
+    CAD: { flag: '🇨🇦', name: 'Canadian dollar' },
+    SGD: { flag: '🇸🇬', name: 'Singapore dollar' },
+    AED: { flag: '🇦🇪', name: 'UAE dirham' },
+  };
+  const digits = (n1, n2, label) => v => {
+    const d = v.replace(/[\s-]/g, '');
+    if (!d) return `Enter your ${label}`;
+    if (!/^\d+$/.test(d)) return `${cap(label)} can only contain numbers`;
+    if (d.length < n1 || d.length > n2) return n1 === n2 ? `${cap(label)} must be ${n1} digits` : `Enter a valid ${label} (${n1}–${n2} digits)`;
+    return null;
+  };
+  const cap = s => s[0].toUpperCase() + s.slice(1);
+  const LOCAL_RAILS = {
+    USD: { scheme: 'US ACH', speed: '1–2 days', fields: [
+      { key: 'acct', label: 'Account number', ph: '8–17 digits', inputmode: 'numeric', validate: digits(8, 17, 'account number') },
+      { key: 'routing', label: 'ACH routing number', ph: '9 digits', inputmode: 'numeric', validate: digits(9, 9, 'routing number') },
+    ]},
+    EUR: { scheme: 'SEPA', speed: '1 day', fields: [
+      { key: 'iban', label: 'IBAN', ph: 'e.g. BE71 9670 0000 0000', validate: v => {
+        const d = v.replace(/\s/g, '').toUpperCase();
+        if (!d) return 'Enter your IBAN';
+        return /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(d) ? null : 'Enter a valid IBAN (starts with 2 letters, e.g. BE71…)';
+      }},
+    ]},
+    GBP: { scheme: 'Faster Payments', speed: 'Same day', fields: [
+      { key: 'acct', label: 'Account number', ph: '8 digits', inputmode: 'numeric', validate: digits(8, 8, 'account number') },
+      { key: 'sort', label: 'Sort code', ph: '6 digits, e.g. 23-14-70', inputmode: 'numeric', validate: digits(6, 6, 'sort code') },
+    ]},
+    AUD: { scheme: 'BECS', speed: '1–2 days', fields: [
+      { key: 'acct', label: 'Account number', ph: '6–10 digits', inputmode: 'numeric', validate: digits(6, 10, 'account number') },
+      { key: 'bsb', label: 'BSB code', ph: '6 digits', inputmode: 'numeric', validate: digits(6, 6, 'BSB code') },
+    ]},
+    CAD: { scheme: 'EFT', speed: '1–2 days', fields: [
+      { key: 'acct', label: 'Account number', ph: '7–12 digits', inputmode: 'numeric', validate: digits(7, 12, 'account number') },
+      { key: 'transit', label: 'Institution & transit number', ph: '8 digits', inputmode: 'numeric', validate: digits(8, 8, 'institution & transit number') },
+    ]},
+    SGD: { scheme: 'FAST', speed: 'Same day', fields: [
+      { key: 'acct', label: 'Account number', ph: '9–12 digits', inputmode: 'numeric', validate: digits(9, 12, 'account number') },
+      { key: 'bankcode', label: 'Bank code', ph: '4 digits', inputmode: 'numeric', validate: digits(4, 4, 'bank code') },
+    ]},
+  };
+  const WIRE_FIELDS = [
+    { key: 'wbank', label: 'Bank name', ph: 'e.g. HDFC Bank', validate: v => v.trim().length < 2 ? 'Enter your bank name' : null },
+    { key: 'wacct', label: 'Account number or IBAN', ph: '6–34 letters or numbers', validate: v => {
+      const d = v.replace(/\s/g, '');
+      if (!d) return 'Enter your account number';
+      return /^[A-Za-z0-9]{6,34}$/.test(d) ? null : 'Enter a valid account number (6–34 letters or numbers)';
+    }},
+    { key: 'swift', label: 'SWIFT/BIC code', ph: '8 or 11 characters', validate: v => {
+      const d = v.replace(/\s/g, '').toUpperCase();
+      if (!d) return 'Enter your SWIFT/BIC code';
+      return /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(d) ? null : 'SWIFT/BIC must be 8 or 11 characters, e.g. HDFCINBB';
+    }},
+  ];
+
+  function methodsFor(cur) {
+    const wire = { id: 'wire', title: 'Wire transfer (7–10 days)', body: 'Earn at least USD 100 to get paid. Wire transfers are sent over SWIFT in USD and may have higher fees.',
+      chips: [['bad', 'Intermediary bank fees'], ['', 'SWIFT']] };
+    if (cur === 'INR') return [
+      { id: 'bank', title: 'Bank transfer (2–3 days)', tag: 'cur', body: `Get paid in INR to ${CREATOR.bank} ••••${CREATOR.bankLast4}. Your USD earnings are converted before they reach you.`,
+        chips: [['bad', 'Conversion fees'], ['', 'Local transfer']] },
+      wire,
+    ];
+    const rail = LOCAL_RAILS[cur];
+    if (!rail) return [wire];
+    return [
+      { id: 'wise', title: `Wise account (${rail.speed})`, tag: 'rec', body: `Receive ${cur} through local ${rail.scheme} payments instead of SWIFT. Hold it, or convert to INR at the mid-market rate whenever you choose.`,
+        chips: [['good', 'Lower conversion fees'], ['good', `Local ${rail.scheme}`], ['', 'No SWIFT fees']] },
+      wire,
+    ];
+  }
+  const defaultMethod = cur => methodsFor(cur)[0].id;
+  const fieldsFor = () => state.method === 'wire' ? WIRE_FIELDS : (LOCAL_RAILS[state.currency]?.fields || []);
+  const isWise = () => state.method === 'wise';
+
+  // ---------- State ----------
+  const fresh = () => ({
+    screen: 'dash', history: [], dir: 'fwd',
+    currency: CREATOR.localCurrency, method: defaultMethod(CREATOR.localCurrency), hasWise: 'yes',
+    values: { email: CREATOR.email }, errors: {}, showErrors: false,
+    forceMismatch: false, nameError: false,
+    makeDefault: true, connected: null, sheet: false, toast: null, verifyStep: 0,
+  });
+  let state = fresh();
+  let toastTimer, verifyTimers = [];
+
+  // ---------- Icons ----------
+  const svg = (p, s = 24, extra = '') => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${p}</svg>`;
+  const I = {
+    back: svg('<path d="M15 5l-7 7 7 7"/>', 28),
+    close: svg('<path d="M6 6l12 12M18 6L6 18"/>', 26),
+    chev: svg('<path d="M9 6l6 6-6 6"/>', 20),
+    chevDown: svg('<path d="M6 9l6 6 6-6"/>', 20),
+    lock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>', 18),
+    warn: svg('<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17.5v.01"/>', 22),
+    info: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5v.01"/>', 22),
+    check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 20),
+    checkCircle: svg('<circle cx="12" cy="12" r="9.5"/><path d="M8 12.5l3 3 5-6"/>', 22),
+    error: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5M12 16.5v.01"/>', 16),
+    errorBig: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5M12 16.5v.01"/>', 22),
+    bank: svg('<path d="M3 10h18L12 4z"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>', 24),
+    globe: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.8 3 2.8 15 0 18M12 3c-2.8 3-2.8 15 0 18"/>', 22),
+    coins: svg('<ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/><path d="M9 15v2c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.7-2.7-3-6-3"/>', 22),
+    swap: svg('<path d="M4 8h14l-3-3M20 16H6l3 3"/>', 22),
+    shield: svg('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>', 22),
+    id: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14.5 10h4M14.5 13.5h3"/>', 22),
+    external: svg('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>', 20),
+    help: svg('<circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.01"/>', 20),
+    gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2.5l2 2.2 3-.4.7 2.9 2.7 1.4-1 2.9 1 2.9-2.7 1.4-.7 2.9-3-.4-2 2.2-2-2.2-3 .4-.7-2.9-2.7-1.4 1-2.9-1-2.9 2.7-1.4.7-2.9 3 .4z"/>', 26),
+    // dashboard list
+    recap: svg('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4M12 7.5V12l3 2"/>'),
+    cap: svg('<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/>'),
+    bulb: svg('<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>'),
+    trend: svg('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'),
+    reel: svg('<rect x="3" y="3" width="18" height="18" rx="4" stroke-dasharray="3 2.5"/><path d="M10 9l5 3-5 3z"/>'),
+    gift: svg('<rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M12 9v12M3 13h18M12 9c-2-3-6-4-6-1.5S12 9 12 9zm0 0c2-3 6-4 6-1.5S12 9 12 9z"/>'),
+    box: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M10 13h4"/>'),
+    person: svg('<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18c1-2.4 3-3.5 5.5-3.5s4.5 1.1 5.5 3.5"/>'),
+    partner: svg('<path d="M2 12l2.5 2.5L9 10"/><circle cx="15" cy="8" r="3.5"/><path d="M9.5 20c.7-3 3-4.8 5.5-4.8s4.8 1.8 5.5 4.8"/>'),
+    money: svg('<rect x="2" y="6" width="20" height="12" rx="1.5"/><circle cx="12" cy="12" r="2.6"/><path d="M5 9.5v5M19 9.5v5"/>'),
+    brief: svg('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/>'),
+  };
+
+  // Line-art illustrations in the style of the existing screens, with the IG gradient accent.
+  let gid = 0;
+  const grad = () => {
+    const id = 'g' + (++gid);
+    return { id, def: `<defs><linearGradient id="${id}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#FEDA75"/><stop offset=".3" stop-color="#FA7E1E"/><stop offset=".6" stop-color="#D62976"/><stop offset="1" stop-color="#962FBF"/></linearGradient></defs>` };
+  };
+  const ILLO = {
+    bankPlus() { const g = grad(); return `<svg width="132" height="112" viewBox="0 0 132 112" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round">${g.def}
+      <path d="M14 34L60 8l46 26z"/><circle cx="60" cy="24" r="4"/><path d="M18 34h84M24 40v40M42 40v40M60 40v40M78 40v40M96 40v40M16 84h88M10 92h100"/>
+      <circle cx="104" cy="86" r="17" fill="var(--bg)" stroke="url(#${g.id})" stroke-width="3.5"/><path d="M104 78v16M96 86h16" stroke="url(#${g.id})" stroke-width="3.5" stroke-linecap="round"/></svg>`; },
+    globe() { const g = grad(); return `<svg width="132" height="112" viewBox="0 0 132 112" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">${g.def}
+      <circle cx="60" cy="56" r="38"/><path d="M22 56h76M60 18c14 12 14 64 0 76M60 18c-14 12-14 64 0 76M28 36h64M28 76h64"/>
+      <circle cx="102" cy="28" r="17" fill="var(--bg)" stroke="url(#${g.id})" stroke-width="3.5"/><text x="102" y="35" text-anchor="middle" font-size="20" font-weight="700" fill="url(#${g.id})" stroke="none" font-family="-apple-system,system-ui">$</text></svg>`; },
+    coins() { const g = grad(); return `<svg width="132" height="112" viewBox="0 0 132 112" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">${g.def}
+      <ellipse cx="44" cy="40" rx="26" ry="10"/><path d="M18 40v16c0 5.5 11.6 10 26 10s26-4.5 26-10V40M18 56v16c0 5.5 11.6 10 26 10 4 0 7.8-.3 11-1"/>
+      <path d="M80 34h28l-7-7M108 50H80l7 7" stroke="url(#${g.id})" stroke-width="3.5" stroke-linejoin="round"/>
+      <circle cx="88" cy="82" r="20" stroke="url(#${g.id})" stroke-width="3.5"/><text x="88" y="90" text-anchor="middle" font-size="22" font-weight="700" fill="url(#${g.id})" stroke="none" font-family="-apple-system,system-ui">₹</text></svg>`; },
+    card() { const g = grad(); return `<svg width="132" height="112" viewBox="0 0 132 112" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${g.def}
+      <rect x="14" y="22" width="92" height="62" rx="8"/><path d="M14 40h92M26 66h26M26 74h16"/>
+      <circle cx="104" cy="80" r="17" fill="var(--bg)" stroke="url(#${g.id})" stroke-width="3.5"/><path d="M97 80l5 5 9-10" stroke="url(#${g.id})" stroke-width="3.5"/></svg>`; },
+    leave() { const g = grad(); return `<svg width="132" height="112" viewBox="0 0 132 112" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${g.def}
+      <rect x="20" y="10" width="52" height="92" rx="10"/><path d="M40 92h12"/>
+      <path d="M58 56h52M96 42l14 14-14 14" stroke="url(#${g.id})" stroke-width="3.5"/></svg>`; },
+    success() { const g = grad(); return `<svg width="120" height="120" viewBox="0 0 120 120" fill="none" stroke-linecap="round" stroke-linejoin="round">${g.def}
+      <circle cx="60" cy="60" r="46" stroke="url(#${g.id})" stroke-width="4"/><path d="M40 61l14 14 27-30" stroke="url(#${g.id})" stroke-width="5"/></svg>`; },
+  };
+
+  // ---------- Layout helpers ----------
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const status = () => `<div class="status"><span>9:41</span><span class="icons">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 2.5c2.3 0 4.4.9 6 2.4l1.2-1.3A10.4 10.4 0 0 0 8 .7 10.4 10.4 0 0 0 .8 3.6L2 4.9a8.6 8.6 0 0 1 6-2.4zm0 3.7c1.3 0 2.5.5 3.4 1.3l1.3-1.3A6.7 6.7 0 0 0 8 4.4c-1.8 0-3.4.7-4.7 1.8l1.3 1.3c.9-.8 2.1-1.3 3.4-1.3zM8 9.7l1.9-1.9a2.7 2.7 0 0 0-3.8 0z"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x=".5" y=".5" width="23" height="12" rx="3.5" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="20" height="9" rx="2" fill="currentColor"/><path d="M25 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2z" fill="currentColor" opacity=".4"/></svg></span></div>`;
+  const header = (title, { back = true, right = '', bordered = false } = {}) => `<div class="header ${bordered ? 'bordered' : ''}">
+      ${back ? `<button class="icon-btn" data-action="back" aria-label="Back">${I.back}</button>` : '<span></span>'}
+      <h1>${title}</h1>${right || '<span></span>'}</div>`;
+  const progress = n => `<div class="progress">${[1, 2, 3, 4, 5].map(i => `<span class="${i <= n ? 'on' : ''}"></span>`).join('')}</div>`;
+  const page = ({ head, prog, body, foot, flush }) => `${status()}${head}${prog != null ? progress(prog) : ''}
+      <div class="content ${flush ? 'flush' : ''}">${body}</div>${foot ? `<div class="footer">${foot}</div>` : ''}`;
+  const hero = (illo, title, body) => `<div class="illo">${illo}</div><h2 class="hero-title">${title}</h2>${body ? `<p class="hero-body">${body}</p>` : ''}`;
+  const learnMore = `<button class="link" data-action="toast" data-msg="Opens the Help Center article on payout methods">Learn more</button>`;
+  const curLabel = c => `${CURRENCIES[c].flag} ${c}`;
+  const mask = v => '••••' + String(v || '').replace(/\s|-/g, '').slice(-4);
+
+  // ---------- Screens ----------
+  const S = {};
+
+  S.dash = () => page({
+    head: header('Professional dashboard', { right: `<button class="icon-btn" aria-label="Settings">${I.gear}</button>`, bordered: true }),
+    flush: true,
+    body: `<div class="list-heading">Your tools</div>
+      ${[['recap', 'Monthly recap', 'See what you made happen last month.', 'new'], ['cap', 'Best practices'], ['bulb', 'Inspiration'], ['trend', 'Ad tools'], ['reel', 'Trial reels', '', 'new'],
+         ['box', 'Bonuses'], ['person', 'Branded content'], ['partner', 'Partnership ads'], ['gift', 'Gifts'], ['bank', 'Payouts', '', 'dot']].map(([ic, t, s, b]) =>
+        `<div class="list-row" ${t === 'Payouts' ? 'data-action="go" data-to="payouts"' : 'data-action="toast" data-msg="Not part of this prototype — tap Payouts"'}>
+          <span style="display:flex">${I[ic]}</span><div class="grow"><div class="t">${t}</div>${s ? `<div class="s">${s}</div>` : ''}</div>
+          ${b === 'new' ? '<span class="badge">New</span>' : ''}${b === 'dot' && !state.connected ? '<span class="dot"></span>' : ''}
+          <span style="display:flex;color:var(--text-2)">${I.chev}</span></div>`).join('')}
+      <div class="divider"></div><div class="list-heading">Tools to set up</div>
+      <div class="list-row" data-action="toast" data-msg="Not part of this prototype — tap Payouts"><span style="display:flex">${I.money}</span><div class="grow"><div class="t">Monetization</div></div><span style="display:flex;color:var(--text-2)">${I.chev}</span></div>
+      <div class="list-row" data-action="toast" data-msg="Not part of this prototype — tap Payouts"><span style="display:flex">${I.brief}</span><div class="grow"><div class="t">More tools</div></div><span style="display:flex;color:var(--text-2)">${I.chev}</span></div>`,
+  });
+
+  S.payouts = () => {
+    const c = state.connected;
+    const bankRow = (isDefault) => `<div class="method-card"><div class="method-logo bank">${I.bank}</div><div class="grow" style="flex:1">
+        <div class="mt">Bank transfer ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div><div class="ms">${CREATOR.bank} ••••${CREATOR.bankLast4} · INR</div></div></div>`;
+    const newRow = (isDefault) => c.method === 'wise'
+      ? `<div class="method-card"><div class="method-logo wise">W</div><div class="grow" style="flex:1"><div class="mt">Wise account ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div>
+         <div class="ms">${c.rail} ${c.last4} · ${c.currency}</div></div></div>`
+      : `<div class="method-card"><div class="method-logo bank">${I.globe}</div><div class="grow" style="flex:1"><div class="mt">Wire transfer ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div>
+         <div class="ms">${esc(c.bank)} ${c.last4} · SWIFT</div></div></div>`;
+    return page({
+      head: header('Payouts', { bordered: true }),
+      body: `
+        ${c ? `<div class="banner positive" style="margin-top:12px"><span class="bi">${I.checkCircle}</span><div><div class="bt">${c.method === 'wise' ? `You're set up to get paid in ${c.currency}` : 'Wire transfer added'}</div>
+            <div class="bb">${c.isDefault ? `Your next payout on ${CREATOR.nextDate} will go to your new payout method.` : 'Your bank transfer is still your default. You can change this anytime.'}</div></div></div>`
+          : `<div class="banner warning" style="margin-top:12px"><span class="bi">${I.warn}</span><div><div class="bt">You could be losing money on currency conversion</div>
+            <div class="bb">Your bank can't receive USD, so each payout is converted before it reaches you.</div>
+            <button class="link" style="margin-top:8px;font-size:14px" data-action="go" data-to="edu">See how to keep more</button></div></div>`}
+        <div class="section-title">Next payout</div>
+        <div class="card"><div class="caption">Estimated · ${CREATOR.nextDate}</div><div class="big-amt">${CREATOR.nextPayout}</div>
+          <div class="caption">Earnings from gifts, bonuses and subscriptions</div></div>
+        <div class="section-title">Payout methods</div>
+        <div class="card">${c ? (c.isDefault ? newRow(true) + '<div class="divider"></div>' + bankRow(false) : bankRow(true) + '<div class="divider"></div>' + newRow(false)) : bankRow(true)}</div>
+        ${c ? '' : `<button class="btn btn-secondary" style="margin-top:12px" data-action="go" data-to="currency">Add payout method</button>`}
+        <div class="section-title">Payout history</div>
+        <div class="card" style="padding:4px 16px">
+          ${[['15 Sep', '$548.10', '₹44,071'], ['15 Aug', '$497.25', '₹39,980'], ['15 Jul', '$402.80', '₹32,385']].map(([d, a, l]) =>
+            `<div class="hist"><div><div>${d}</div><div class="hs">Bank transfer · received ${l}</div></div><div style="font-weight:600">${a}</div></div>`).join('')}
+        </div>`,
+    });
+  };
+
+  S.edu = () => page({
+    head: header('Keep more of your earnings'),
+    body: `${hero(ILLO.coins(), 'Keep more of what you earn', 'A few minutes now could mean more money in every payout.')}
+      <div class="edu-item"><span class="ei">${I.bank}</span><div><div class="et">Why you're seeing this</div>
+        <div class="eb">Your bank account in India can't receive US dollars. Intermediary banks convert each payout at their own exchange rate and add fees.</div></div></div>
+      <div class="edu-item"><span class="ei">${I.coins}</span><div style="flex:1"><div class="et">What it costs you</div>
+        <div class="eb">On a $500 payout:</div>
+        <div class="compare">
+          <div class="row"><span>Bank transfer today</span><span class="amt">₹40,180</span></div>
+          <div class="row win"><span>Wise account</span><span class="amt">₹41,560</span></div>
+          <div class="foot">You'd keep about ₹1,380 more</div>
+        </div>
+        <div class="caption" style="margin-top:6px">Example only. Actual rates and fees vary.</div></div></div>
+      <div class="edu-item"><span class="ei">${I.id}</span><div><div class="et">Why we need new account details</div>
+        <div class="eb">To get paid in USD, we need your Wise account details. These are different from your bank details. Your name and tax info stay the same, so you won't need to enter them again.</div></div></div>
+      <div class="edu-item"><span class="ei">${I.globe}</span><div><div class="et">What is Wise?</div>
+        <div class="eb">Wise is a regulated money transfer provider used by millions of people to hold money in different currencies and convert it at the real exchange rate.</div></div></div>
+      <div class="edu-item"><span class="ei">${I.shield}</span><div><div class="et">Safe and reversible</div>
+        <div class="eb">Your details are encrypted. You can switch back to your bank anytime in Settings. ${learnMore}</div></div></div>`,
+    foot: `<button class="btn btn-primary" data-action="go" data-to="currency">Add Wise account</button>
+      <button class="btn btn-text" data-action="notnow">Not now</button>`,
+  });
+
+  S.currency = () => {
+    const cur = state.currency, rail = LOCAL_RAILS[cur];
+    const isLocal = cur === CREATOR.localCurrency;
+    const note = cur === 'INR'
+      ? `<div class="banner warning"><span class="bi">${I.warn}</span><div><div class="bt">INR payouts are converted first</div><div class="bb">Your USD earnings are converted by intermediary banks before they reach you. Choose USD to unlock a lower-fee Wise account.</div>
+         <button class="link" style="margin-top:8px;font-size:14px" data-action="pickcur" data-cur="USD">Switch to USD</button></div></div>`
+      : rail ? `<div class="banner positive"><span class="bi">${I.checkCircle}</span><div><div class="bt">Unlocks local ${rail.scheme} payments</div><div class="bb">Get paid in ${cur} through a Wise account in ${rail.speed.toLowerCase()}, with no SWIFT wire fees.</div></div></div>`
+      : `<div class="banner info"><span class="bi">${I.info}</span><div><div class="bt">Only wire transfers available</div><div class="bb">${cur} payouts can only be sent by SWIFT wire transfer, which can have higher fees.</div></div></div>`;
+    return page({
+      head: header('Add payout method'), prog: 1,
+      body: `${hero(ILLO.globe(), 'Choose your payout currency', `This is the currency your earnings will be sent in. We've suggested one based on your country. You can change it anytime. ${learnMore}`)}
+        <div class="field"><label>Payout currency</label>
+          <div class="select" data-action="sheet" role="button"><span class="flag">${CURRENCIES[cur].flag}</span>
+            <div><div class="sv">${cur} · ${CURRENCIES[cur].name}</div><div class="ss">${isLocal ? `Suggested for ${CREATOR.country}` : 'Tap to change'}</div></div>
+            <span class="chev">${I.chevDown}</span></div>
+          <div class="help">${isLocal ? `Based on your country: ${CREATOR.country}` : `Your country: ${CREATOR.country} · Local currency: ${CREATOR.localCurrency}`}</div></div>
+        ${note}`,
+      foot: `<button class="btn btn-primary" data-action="go" data-to="method">Continue</button>`,
+    });
+  };
+
+  S.method = () => {
+    const cur = state.currency, list = methodsFor(cur);
+    const cta = state.method === 'bank' ? 'Keep current method' : 'Continue';
+    return page({
+      head: header('Add payout method'), prog: 2,
+      body: `${hero(ILLO.bankPlus(), "Choose how you'd like to get paid", `Payments will be sent to this payout method. You can change your payout method at any time in Settings. ${learnMore} about payout account requirements.`)}
+        <div class="center"><span class="pill-link" data-action="back">Showing options for <b>${curLabel(cur)}</b> · <span class="link">Change</span></span></div>
+        ${list.map(m => `<div class="option ${state.method === m.id ? 'selected' : ''}" data-action="method" data-id="${m.id}" role="radio" aria-checked="${state.method === m.id}">
+            <span class="radio"></span><div style="flex:1"><div class="ot">${m.title}${m.tag === 'rec' ? '<span class="tag rec">RECOMMENDED</span>' : m.tag === 'cur' ? '<span class="tag cur">CURRENT</span>' : ''}</div>
+            <div class="ob">${m.body}</div><div class="chips">${m.chips.map(([k, t]) => `<span class="chip ${k}">${t}</span>`).join('')}</div></div></div>`).join('')}
+        ${cur === 'INR' ? `<div class="banner info" style="margin-top:16px"><span class="bi">${I.info}</span><div><div class="bb">Want lower fees? <button class="link" data-action="back">Choose USD</button> or another supported currency to unlock a Wise account.</div></div></div>` : ''}`,
+      foot: `<button class="btn btn-primary" data-action="methodNext">${cta}</button>
+        ${state.method === 'bank' ? '' : `<p class="legal">By tapping <b>Continue</b>, you agree to let Instagram store your payout info and send direct deposits of payments to the payout method that you've selected. Your info may be shared with payout processing providers.</p>`}`,
+    });
+  };
+
+  S.haveWise = () => page({
+    head: header('Add payout method'), prog: 3,
+    body: `${hero(ILLO.card(), 'Do you have a Wise account?', `You'll need a Wise account with ${state.currency} account details to get paid through ${LOCAL_RAILS[state.currency].scheme}.`)}
+      ${[['yes', 'I have a Wise account', `You'll need your ${state.currency} account details from the Wise app.`], ['no', 'Create one at Wise', "Takes about 5 minutes. We'll bring you back here when you're done."]].map(([id, t, b]) =>
+        `<div class="option ${state.hasWise === id ? 'selected' : ''}" data-action="hasWise" data-id="${id}"><span class="radio"></span><div><div class="ot">${t}</div><div class="ob">${b}</div></div></div>`).join('')}`,
+    foot: `<button class="btn btn-primary" data-action="haveWiseNext">Continue</button>`,
+  });
+
+  S.leave = () => page({
+    head: header('', { back: true }),
+    body: `${hero(ILLO.leave(), "You're leaving Instagram", `We'll open Wise so you can create a free account. When you have your ${state.currency} account details, come back to Instagram to finish adding them.`)}
+      <div class="card"><div class="kv"><span class="k">Use this name</span><span class="v">${CREATOR.name}</span></div>
+        <div class="kv"><span class="k">Open a balance in</span><span class="v">${curLabel(state.currency)}</span></div></div>
+      <p class="caption center" style="margin-top:12px">Your Wise account name must match your legal name on Instagram.</p>`,
+    foot: `<button class="btn btn-primary" data-action="openWise">Open Wise ${I.external}</button>`,
+  });
+
+  const fieldHtml = f => {
+    const err = state.showErrors && state.errors[f.key];
+    return `<div class="field ${err ? 'err' : ''}" data-fieldwrap="${f.key}"><label for="f-${f.key}">${f.label}</label>
+      <input class="input" id="f-${f.key}" data-field="${f.key}" placeholder="${esc(f.ph)}" value="${esc(state.values[f.key])}" ${f.inputmode ? `inputmode="${f.inputmode}"` : ''} autocomplete="off" autocapitalize="characters" spellcheck="false" />
+      <div class="error">${I.error}<span>${esc(err || '')}</span></div></div>`;
+  };
+  const EMAIL_FIELD = { key: 'email', label: 'Wise account email', ph: 'name@example.com', validate: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) ? null : 'Enter a valid email address' };
+
+  S.details = () => {
+    const wise = isWise(), cur = state.currency, rail = LOCAL_RAILS[cur];
+    const fields = fieldsFor();
+    return page({
+      head: header('Add payout method'), prog: 4,
+      body: `<h2 class="hero-title" style="margin-top:16px">${wise ? `Enter your Wise ${cur} details` : 'Enter your wire transfer details'}</h2>
+        <p class="hero-body">${wise ? `These let us pay you through local ${rail.scheme} payments. ${learnMore}` : `Payouts will be sent by SWIFT wire in USD. ${learnMore}`}</p>
+        ${state.nameError ? `<div class="banner negative" style="margin-bottom:8px"><span class="bi">${I.errorBig}</span><div><div class="bt">Name doesn't match</div>
+           <div class="bb">The name on this Wise account doesn't match your legal name, <b>${CREATOR.name}</b>. Update your name in Wise or use a different account.</div>
+           <div style="display:flex;gap:16px;margin-top:8px"><button class="link" style="font-size:14px" data-action="dismissName">Try again</button>${learnMore.replace('class="link"', 'class="link" style="font-size:14px"')}</div></div></div>` : ''}
+        <div class="group-label">From your payout account</div>
+        <div class="field"><label>Account holder name</label><div class="locked">${CREATOR.name}<span class="lk">${I.lock}</span></div>
+          <div class="help">Taken from your legal name. Your ${wise ? 'Wise' : 'bank'} account must be in this name.</div></div>
+        <div class="field"><label>Country of residence</label><div class="locked">${CREATOR.country}<span class="lk">${I.lock}</span></div></div>
+        <div class="group-label">${wise ? `Your Wise ${cur} account` : 'Your bank account'}</div>
+        ${wise ? fieldHtml(EMAIL_FIELD) : ''}
+        ${wise ? `<details class="help-box"><summary><span style="color:var(--primary);display:flex">${I.help}</span>Where do I find these?<span class="chev">${I.chevDown}</span></summary>
+          <ol><li>Open the <b>Wise</b> app</li><li>Tap your <b>${cur}</b> balance</li><li>Tap <b>Account details</b></li><li>Copy your <b>${fields.map(f => f.label.toLowerCase()).join('</b> and <b>')}</b></li></ol></details>` : ''}
+        ${fields.map(fieldHtml).join('')}`,
+      foot: `<button class="btn btn-primary" data-action="submitDetails">Continue</button>`,
+    });
+  };
+
+  S.verifying = () => {
+    const steps = isWise() ? ['Checking account details', 'Confirming account holder name', 'Securing your info'] : ['Checking SWIFT/BIC code', 'Confirming account holder name', 'Securing your info'];
+    return page({
+      head: header('Add payout method', { back: false }), prog: 4,
+      body: `<div style="display:flex;flex-direction:column;align-items:center;padding-top:150px">
+        <div class="spinner"></div><h2 class="hero-title" style="margin-top:28px;font-size:22px">Verifying your ${isWise() ? 'Wise' : 'bank'} account…</h2>
+        <p class="hero-body">This usually takes a few seconds.</p>
+        <div class="verify-steps">${steps.map((s, i) => `<div class="${state.verifyStep > i ? 'done' : ''}">${I.check}${s}</div>`).join('')}</div></div>`,
+    });
+  };
+
+  S.review = () => {
+    const wise = isWise(), cur = state.currency, rail = LOCAL_RAILS[cur];
+    const fields = fieldsFor();
+    return page({
+      head: header('Add payout method'), prog: 5,
+      body: `<h2 class="hero-title" style="margin-top:16px">Review your new payout method</h2>
+        <p class="hero-body">Check these details before connecting.</p>
+        <div class="card"><div class="method-card" style="padding-bottom:12px;border-bottom:1px solid var(--divider)">
+            <div class="method-logo ${wise ? 'wise' : 'bank'}">${wise ? 'W' : I.globe}</div>
+            <div><div class="mt">${wise ? 'Wise account' : 'Wire transfer'}</div><div class="ms">${wise ? `${rail.scheme} · ${rail.speed}` : 'SWIFT · 7–10 days'}</div></div></div>
+          <div class="kv"><span class="k">Account holder</span><span class="v">${CREATOR.name}</span></div>
+          ${wise ? `<div class="kv"><span class="k">Wise email</span><span class="v">${esc(state.values.email)}</span></div>` : ''}
+          ${fields.map(f => `<div class="kv"><span class="k">${f.label}</span><span class="v">${f.key === 'wbank' ? esc(state.values[f.key]) : f.key === 'swift' ? esc(state.values[f.key].toUpperCase()) : mask(state.values[f.key])}</span></div>`).join('')}
+          <div class="kv"><span class="k">Payout currency</span><span class="v">${wise ? curLabel(cur) : '🇺🇸 USD'}</span></div>
+          <div class="kv"><span class="k">Minimum payout</span><span class="v">${wise ? 'USD 25' : 'USD 100'}</span></div>
+        </div>
+        <div class="banner info" style="margin-top:16px"><span class="bi">${I.info}</span><div><div class="bb">Future payouts can be sent to this account, starting with your next payout on <b style="color:var(--text)">${CREATOR.nextDate}</b>. You'll choose whether to make it your default next.</div></div></div>`,
+      foot: `<button class="btn btn-primary" data-action="connect">Connect ${wise ? 'Wise account' : 'payout method'}</button>
+        <p class="legal">By tapping <b>Connect ${wise ? 'Wise account' : 'payout method'}</b>, you agree to let Instagram store your payout info and send direct deposits of payments to the payout method that you've selected. Your info may be shared with payout processing providers.</p>`,
+    });
+  };
+
+  S.success = () => {
+    const wise = isWise();
+    return page({
+      head: header('', { back: false, right: `<button class="icon-btn" data-action="done" aria-label="Close">${I.close}</button>` }), prog: 5,
+      body: `${hero(ILLO.success(), wise ? 'Wise account added' : 'Wire transfer added',
+          wise ? `You can now get paid in ${state.currency} through ${LOCAL_RAILS[state.currency].scheme}, with lower conversion fees.` : 'You can now get paid by SWIFT wire transfer.')}
+        <div class="card"><div class="caption">Next payout</div><div class="big-amt">${CREATOR.nextPayout}</div>
+          <div class="caption">Expected ${CREATOR.nextDate} · to ${state.makeDefault ? (wise ? `Wise ${mask(state.values.acct || state.values.iban)}` : `${esc(state.values.wbank)} ${mask(state.values.wacct)}`) : `${CREATOR.bank} ••••${CREATOR.bankLast4}`}</div></div>
+        <div class="toggle-row" data-action="toggleDefault"><div><div class="tt">Make this my default payout method</div>
+          <div class="ts">${state.makeDefault ? 'All future payouts will go here' : `Payouts will keep going to ${CREATOR.bank}`}</div></div>
+          <span class="switch ${state.makeDefault ? 'on' : ''}" role="switch" aria-checked="${state.makeDefault}"></span></div>`,
+      foot: `<button class="btn btn-primary" data-action="done">Done</button>`,
+    });
+  };
+
+  // ---------- Sheet ----------
+  const sheetHtml = () => {
+    const row = c => {
+      const rail = LOCAL_RAILS[c];
+      const sub = c === 'INR' ? 'Local bank transfer · converted from USD' : rail ? `Unlocks ${rail.scheme} via Wise · ${rail.speed}` : 'Wire transfer (SWIFT) only';
+      return `<div class="cur-row" data-action="pickcur" data-cur="${c}"><span class="flag">${CURRENCIES[c].flag}</span><div><div class="ct">${c} · ${CURRENCIES[c].name}</div><div class="cs">${sub}</div></div>
+        ${state.currency === c ? `<span class="ck">${I.check}</span>` : ''}</div>`;
+    };
+    return `<div class="sheet-wrap" data-action="closeSheet"><div class="sheet" data-stop>
+      <div class="grab"></div><div class="sh">Payout currency</div><div class="sb">
+      <div class="grp">Suggested for ${CREATOR.country}</div>${row('INR')}
+      <div class="grp">Popular for creators</div>${['USD', 'EUR', 'GBP'].map(row).join('')}
+      <div class="grp">All currencies</div>${['AUD', 'CAD', 'SGD', 'AED'].map(row).join('')}</div></div></div>`;
+  };
+
+  // ---------- Render & navigation ----------
+  const phone = document.getElementById('phone');
+  function render() {
+    phone.innerHTML = `<div class="screen ${state.dir === 'back' ? 'back-anim' : ''}">${S[state.screen]()}</div>
+      ${state.sheet ? sheetHtml() : ''}`;
+    if (state.toast) showToastEl();
+  }
+  // Toasts live outside the screen markup so showing one never re-renders (and blurs) the form.
+  function showToastEl() {
+    phone.querySelector('.toast')?.remove();
+    phone.insertAdjacentHTML('beforeend', `<div class="toast">${I.info}<span>${esc(state.toast)}</span></div>`);
+  }
+  const softRender = () => { const d = state.dir; state.dir = 'none'; render(); state.dir = d; };
+  function go(to, { replace = false } = {}) {
+    if (!replace) state.history.push(state.screen);
+    state.screen = to; state.dir = 'fwd'; render();
+  }
+  function back() {
+    if (!state.history.length) return;
+    state.screen = state.history.pop(); state.dir = 'back'; state.nameError = false; render();
+  }
+  function toast(msg) {
+    state.toast = msg; showToastEl();
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { state.toast = null; phone.querySelector('.toast')?.remove(); }, 2400);
+  }
+  function validateAll() {
+    const fs = (isWise() ? [EMAIL_FIELD] : []).concat(fieldsFor());
+    state.errors = {};
+    fs.forEach(f => { const e = f.validate(state.values[f.key] || ''); if (e) state.errors[f.key] = e; });
+    return Object.keys(state.errors).length === 0;
+  }
+  function startVerify() {
+    verifyTimers.forEach(clearTimeout);
+    state.verifyStep = 0;
+    go('verifying');
+    [600, 1200, 1800].forEach((t, i) => verifyTimers.push(setTimeout(() => { state.verifyStep = i + 1; softRender(); }, t)));
+    verifyTimers.push(setTimeout(() => {
+      // Pop the verifying screen so Back from review/details skips it.
+      state.screen = state.history.pop();
+      if (state.forceMismatch && isWise()) {
+        state.forceMismatch = false; state.nameError = true; state.dir = 'back'; render();
+        phone.querySelector('.content').scrollTop = 0;
+      } else go('review');
+    }, 2300));
+  }
+
+  phone.addEventListener('click', e => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    if (el.dataset.action === 'closeSheet' && e.target.closest('[data-stop]')) return;
+    const a = el.dataset.action;
+    switch (a) {
+      case 'back': back(); break;
+      case 'go': go(el.dataset.to); break;
+      case 'toast': toast(el.dataset.msg); break;
+      case 'notnow':
+        state.history = ['dash']; state.screen = 'payouts'; state.dir = 'back'; render();
+        toast("No problem. You can add Wise anytime from Payouts."); break;
+      case 'sheet': state.sheet = true; softRender(); break;
+      case 'closeSheet': state.sheet = false; softRender(); break;
+      case 'pickcur':
+        if (state.currency !== el.dataset.cur) {
+          state.currency = el.dataset.cur; state.method = defaultMethod(state.currency);
+          state.errors = {}; state.showErrors = false;
+        }
+        state.sheet = false; softRender(); break;
+      case 'method': state.method = el.dataset.id; softRender(); break;
+      case 'methodNext':
+        if (state.method === 'bank') {
+          state.history = ['dash']; state.screen = 'payouts'; state.dir = 'back'; render();
+          toast('No changes made to your payout method');
+        } else { state.showErrors = false; state.nameError = false; go(state.method === 'wise' ? 'haveWise' : 'details'); }
+        break;
+      case 'hasWise': state.hasWise = el.dataset.id; softRender(); break;
+      case 'haveWiseNext': go(state.hasWise === 'yes' ? 'details' : 'leave'); break;
+      case 'openWise':
+        toast('Opening Wise…');
+        setTimeout(() => { state.hasWise = 'yes'; go('details', { replace: true }); toast('Welcome back. Add your new Wise details below.'); }, 1400);
+        break;
+      case 'submitDetails':
+        state.nameError = false;
+        if (validateAll()) { state.showErrors = false; startVerify(); }
+        else {
+          state.showErrors = true; softRender();
+          const first = phone.querySelector('.field.err .input');
+          if (first) { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); first.focus({ preventScroll: true }); }
+        }
+        break;
+      case 'dismissName': state.nameError = false; softRender(); break;
+      case 'connect': state.makeDefault = true; go('success'); break;
+      case 'toggleDefault': state.makeDefault = !state.makeDefault; softRender(); break;
+      case 'done': {
+        const wise = isWise();
+        state.connected = {
+          method: state.method, currency: state.currency, isDefault: state.makeDefault,
+          rail: wise ? LOCAL_RAILS[state.currency].scheme : 'SWIFT',
+          last4: mask(wise ? (state.values.acct || state.values.iban) : state.values.wacct), bank: state.values.wbank,
+        };
+        state.history = ['dash']; state.screen = 'payouts'; state.dir = 'back'; render(); break;
+      }
+    }
+  });
+
+  // Live input: keep values, and clear/update errors in place once they've been shown.
+  phone.addEventListener('input', e => {
+    const key = e.target.dataset.field;
+    if (!key) return;
+    state.values[key] = e.target.value;
+    if (!state.showErrors) return;
+    const f = [EMAIL_FIELD, ...fieldsFor()].find(x => x.key === key);
+    const err = f.validate(e.target.value);
+    state.errors[key] = err;
+    const wrap = phone.querySelector(`[data-fieldwrap="${key}"]`);
+    wrap.classList.toggle('err', !!err);
+    wrap.querySelector('.error span').textContent = err || '';
+  });
+
+  function restart() { verifyTimers.forEach(clearTimeout); state = fresh(); render(); }
+  function armMismatch() { state.forceMismatch = true; toast('Next Wise verification will fail with a name mismatch'); }
+  document.getElementById('demo').addEventListener('click', e => {
+    const d = e.target.dataset.demo;
+    if (d === 'restart') restart();
+    if (d === 'mismatch') armMismatch();
+  });
+  window.addEventListener('message', e => {
+    if (e.data === 'restart') restart();
+    if (e.data === 'mismatch') armMismatch();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
