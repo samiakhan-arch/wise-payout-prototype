@@ -356,30 +356,57 @@
     }},
   ];
 
+  // Instant bank transfer: paid straight to a local Indian bank account in INR, without SWIFT.
+  const INSTANT_FIELDS = [
+    { key: 'ibank', label: 'Bank name', ph: 'e.g. HDFC Bank', validate: v => v.trim().length < 2 ? 'Enter your bank name' : null },
+    { key: 'iacct', label: 'Account number', ph: '9–18 digits', inputmode: 'numeric', validate: digits(9, 18, 'account number') },
+    { key: 'ifsc', label: 'IFSC code', ph: '11 characters, e.g. HDFC0001234', validate: v => {
+      const d = v.replace(/\s/g, '').toUpperCase();
+      if (!d) return 'Enter your IFSC code';
+      return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(d) ? null : 'IFSC code must be 11 characters, e.g. HDFC0001234';
+    }},
+  ];
+  const OTHER_METHODS = {
+    wire: { name: 'Wire transfer', logo: () => I.globe, sub: 'SWIFT · 7–10 days', currency: '🇺🇸 USD', min: 'USD 100', rail: 'SWIFT',
+      detailsTitle: 'Enter your wire transfer details', detailsBody: 'Payouts will be sent by SWIFT wire in USD.',
+      verify: ['Checking SWIFT/BIC code', 'Confirming account holder name', 'Securing your info'],
+      successBody: 'You can now get paid by SWIFT wire transfer.', bankKey: 'wbank', acctKey: 'wacct' },
+    instant: { name: 'Instant bank transfer', logo: () => I.bank, sub: 'INR · Arrives in seconds', currency: '🇮🇳 INR', min: 'USD 25', rail: 'Instant',
+      detailsTitle: 'Enter your bank details', detailsBody: 'Payouts will be sent straight to your bank account in INR, in seconds. No SWIFT or intermediary banks.',
+      verify: ['Checking IFSC code', 'Confirming account holder name', 'Securing your info'],
+      successBody: 'Your payouts will now arrive in your bank account in INR within seconds, with no SWIFT fees.', bankKey: 'ibank', acctKey: 'iacct' },
+  };
+  const OM = () => OTHER_METHODS[state.method];
+
+  // Concept: Meta pays Wise directly, so Wise payouts land in seconds (not over the bank rail's timeline).
+  const WISE_SPEED = 'In seconds';
+
   function methodsFor(cur) {
     const wire = { id: 'wire', title: 'Wire transfer (7–10 days)', body: 'Earn at least USD 100 to get paid. Wire transfers are sent over SWIFT in USD and may have higher fees.',
       chips: [['bad', 'Intermediary bank fees'], ['', 'SWIFT']] };
     // Currencies with no local Wise rail (INR, AED) still offer Wise, paid in USD over US ACH.
     const usd = LOCAL_RAILS.USD;
-    const wiseUsd = { id: 'wise', title: `Wise account (${usd.speed})`, tag: 'rec', switchTo: 'USD',
-      body: `Get paid in USD to your Wise account through ${usd.scheme}, instead of being converted by your bank. Convert to ${CREATOR.localCurrency} at the mid-market rate whenever you choose.`,
-      chips: [['good', 'Lower conversion fees'], ['good', `Paid in USD via ${usd.scheme}`], ['', 'No SWIFT fees']] };
+    const wiseUsd = { id: 'wise', title: `Wise account (${WISE_SPEED})`, tag: 'rec', switchTo: 'USD',
+      body: `Get paid in USD straight to your Wise account, instead of being converted by your bank. Payouts land in seconds. Convert to ${CREATOR.localCurrency} at the mid-market rate whenever you choose.`,
+      chips: [['good', 'Arrives in seconds'], ['good', 'Lower conversion fees'], ['', 'No SWIFT fees']] };
     if (cur === 'INR') return [
       wiseUsd,
-      { id: 'bank', title: 'Bank transfer (2–3 days)', tag: 'cur', body: `Get paid in INR to ${CREATOR.bank} ••••${CREATOR.bankLast4}. Your USD earnings are converted before they reach you.`,
-        chips: [['bad', 'Conversion fees'], ['', 'Local transfer']] },
+      { id: 'instant', title: 'Bank transfer (In seconds)', body: `Get paid in INR straight to your bank account, with no SWIFT or intermediary banks. Use ${CREATOR.bank} or any Indian bank account.`,
+        chips: [['good', 'Arrives in seconds'], ['good', 'No SWIFT fees'], ['', 'Paid in INR']] },
+      { id: 'bank', title: 'Bank transfer via SWIFT (2–3 days)', tag: 'cur', body: `Your current method. Paid to ${CREATOR.bank} ••••${CREATOR.bankLast4} over SWIFT, and your USD earnings are converted by intermediary banks before they reach you.`,
+        chips: [['bad', 'Conversion fees'], ['', 'SWIFT']] },
       wire,
     ];
     const rail = LOCAL_RAILS[cur];
     if (!rail) return [wiseUsd, wire];
     return [
-      { id: 'wise', title: `Wise account (${rail.speed})`, tag: 'rec', body: `Receive ${cur} through local ${rail.scheme} payments instead of SWIFT. Hold it, or convert to INR at the mid-market rate whenever you choose.`,
-        chips: [['good', 'Lower conversion fees'], ['good', `Local ${rail.scheme}`], ['', 'No SWIFT fees']] },
+      { id: 'wise', title: `Wise account (${WISE_SPEED})`, tag: 'rec', body: `Get paid in ${cur} straight to your Wise account. Payouts land in seconds, with no SWIFT fees. Hold it, or convert to INR at the mid-market rate whenever you choose.`,
+        chips: [['good', 'Arrives in seconds'], ['good', 'Lower conversion fees'], ['', 'No SWIFT fees']] },
       wire,
     ];
   }
   const defaultMethod = cur => methodsFor(cur)[0].id;
-  const fieldsFor = () => state.method === 'wire' ? WIRE_FIELDS : (LOCAL_RAILS[state.currency]?.fields || []);
+  const fieldsFor = () => state.method === 'wire' ? WIRE_FIELDS : state.method === 'instant' ? INSTANT_FIELDS : (LOCAL_RAILS[state.currency]?.fields || []);
   const isWise = () => state.method === 'wise';
 
   // Fake details that pass validation, per currency (and for wire), so the flow can be clicked straight through.
@@ -391,9 +418,10 @@
     CAD: { acct: '1234567', transit: '00112345' },
     SGD: { acct: '123456789', bankcode: '7171' },
     wire: { wbank: 'HDFC Bank', wacct: '50100234567891', swift: 'HDFCINBB' },
+    instant: { ibank: 'HDFC Bank', iacct: '50100123454821', ifsc: 'HDFC0000123' },
   };
   const demoValues = () => JSON.parse(JSON.stringify(DEMO_VALUES));
-  const scope = () => state.method === 'wire' ? 'wire' : state.currency;
+  const scope = () => OTHER_METHODS[state.method] ? state.method : state.currency;
   const getVal = k => k === 'email' ? state.email : (state.values[scope()]?.[k] ?? '');
   const setVal = (k, v) => { if (k === 'email') state.email = v; else (state.values[scope()] ||= {})[k] = v; };
 
@@ -513,17 +541,17 @@
   S.payouts = () => {
     const c = state.connected;
     const bankRow = (isDefault) => `<div class="method-card"><div class="method-logo bank">${I.bank}</div><div class="grow" style="flex:1">
-        <div class="mt">Bank transfer ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div><div class="ms">${CREATOR.bank} ••••${CREATOR.bankLast4} · INR</div></div></div>`;
+        <div class="mt">Bank transfer via SWIFT ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div><div class="ms">${CREATOR.bank} ••••${CREATOR.bankLast4} · INR · 2–3 days</div></div></div>`;
     const newRow = (isDefault) => c.method === 'wise'
       ? `<div class="method-card"><div class="method-logo wise">${WISE_MARK}</div><div class="grow" style="flex:1"><div class="mt">Wise account ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div>
          <div class="ms">${c.rail} ${c.last4} · ${c.currency}</div></div></div>`
-      : `<div class="method-card"><div class="method-logo bank">${I.globe}</div><div class="grow" style="flex:1"><div class="mt">Wire transfer ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div>
-         <div class="ms">${esc(c.bank)} ${c.last4} · SWIFT</div></div></div>`;
+      : `<div class="method-card"><div class="method-logo bank">${OTHER_METHODS[c.method].logo()}</div><div class="grow" style="flex:1"><div class="mt">${OTHER_METHODS[c.method].name} ${isDefault ? '<span class="tag cur">Default</span>' : ''}</div>
+         <div class="ms">${esc(c.bank)} ${c.last4} · ${OTHER_METHODS[c.method].sub}</div></div></div>`;
     return page({
       head: header('Payouts', { bordered: true }),
       body: `
-        ${c ? `<div class="banner positive" style="margin-top:12px"><span class="bi">${I.checkCircle}</span><div><div class="bt">${c.method === 'wise' ? `You're set up to get paid in ${c.currency}` : 'Wire transfer added'}</div>
-            <div class="bb">${c.isDefault ? `Your next payout on ${CREATOR.nextDate} will go to your new payout method.` : 'Your bank transfer is still your default. You can change this anytime.'}</div></div></div>`
+        ${c ? `<div class="banner positive" style="margin-top:12px"><span class="bi">${I.checkCircle}</span><div><div class="bt">${c.method === 'wise' ? `You're set up to get paid in ${c.currency}` : `${OTHER_METHODS[c.method].name} added`}</div>
+            <div class="bb">${c.isDefault ? `Your next payout on ${CREATOR.nextDate} will go to your new payout method.` : 'Your SWIFT bank transfer is still your default. You can change this anytime.'}</div></div></div>`
           : `<div class="banner warning" style="margin-top:12px"><span class="bi">${I.warn}</span><div><div class="bt">You could be losing money on currency conversion</div>
             <div class="bb">Your bank can't receive USD, so each payout is converted before it reaches you.</div>
             <button class="link" style="margin-top:8px;font-size:14px" data-action="go" data-to="edu">See how to keep more</button></div></div>`}
@@ -536,7 +564,7 @@
         <div class="section-title">Payout history</div>
         <div class="card" style="padding:4px 16px">
           ${[['15 Sep', '$548.10', '₹44,071'], ['15 Aug', '$497.25', '₹39,980'], ['15 Jul', '$402.80', '₹32,385']].map(([d, a, l]) =>
-            `<div class="hist"><div><div>${d}</div><div class="hs">Bank transfer · received ${l}</div></div><div style="font-weight:600">${a}</div></div>`).join('')}
+            `<div class="hist"><div><div>${d}</div><div class="hs">Bank transfer via SWIFT · received ${l}</div></div><div style="font-weight:600">${a}</div></div>`).join('')}
         </div>`,
     });
   };
@@ -549,7 +577,7 @@
       <div class="edu-item"><span class="ei">${I.coins}</span><div style="flex:1"><div class="et">What it costs you</div>
         <div class="eb">On a $500 payout:</div>
         <div class="compare">
-          <div class="row"><span>Bank transfer today</span><span class="amt">₹40,180</span></div>
+          <div class="row"><span>Bank transfer via SWIFT today</span><span class="amt">₹40,180</span></div>
           <div class="row win"><span>Wise account</span><span class="amt">₹41,560</span></div>
           <div class="foot">You'd keep about ₹1,380 more</div>
         </div>
@@ -570,7 +598,7 @@
     const note = cur === 'INR'
       ? `<div class="banner warning"><span class="bi">${I.warn}</span><div><div class="bt">INR payouts are converted first</div><div class="bb">Your USD earnings are converted by intermediary banks before they reach you. Choose USD, or pick a Wise account on the next step, to avoid this.</div>
          <button class="link" style="margin-top:8px;font-size:14px" data-action="pickcur" data-cur="USD">Switch to USD</button></div></div>`
-      : rail ? `<div class="banner positive"><span class="bi">${I.checkCircle}</span><div><div class="bt">Unlocks local ${rail.scheme} payments</div><div class="bb">Get paid in ${cur} through a Wise account in ${rail.speed.toLowerCase()}, with no SWIFT wire fees.</div></div></div>`
+      : rail ? `<div class="banner positive"><span class="bi">${I.checkCircle}</span><div><div class="bt">Unlocks instant Wise payouts</div><div class="bb">Get paid in ${cur} to a Wise account in seconds, with no SWIFT wire fees.</div></div></div>`
       : `<div class="banner info"><span class="bi">${I.info}</span><div><div class="bt">Only wire transfers available</div><div class="bb">${cur} payouts can only be sent by SWIFT wire transfer, which can have higher fees.</div></div></div>`;
     return page({
       head: header('Add payout method'), prog: 1,
@@ -631,8 +659,8 @@
     const fields = fieldsFor();
     return page({
       head: header('Add payout method'), prog: 4,
-      body: `<h2 class="hero-title" style="margin-top:16px">${wise ? `Enter your Wise ${cur} details` : 'Enter your wire transfer details'}</h2>
-        <p class="hero-body">${wise ? `These let us pay you through local ${rail.scheme} payments. ${learnMore}` : `Payouts will be sent by SWIFT wire in USD. ${learnMore}`}</p>
+      body: `<h2 class="hero-title" style="margin-top:16px">${wise ? `Enter your Wise ${cur} details` : OM().detailsTitle}</h2>
+        <p class="hero-body">${wise ? `These let us pay you through local ${rail.scheme} payments. ${learnMore}` : `${OM().detailsBody} ${learnMore}`}</p>
         ${state.nameError ? `<div class="banner negative" style="margin-bottom:8px"><span class="bi">${I.errorBig}</span><div><div class="bt">Name doesn't match</div>
            <div class="bb">The name on this Wise account doesn't match your legal name, <b>${CREATOR.name}</b>. Update your name in Wise or use a different account.</div>
            <div style="display:flex;gap:16px;margin-top:8px"><button class="link" style="font-size:14px" data-action="dismissName">Try again</button>${learnMore.replace('class="link"', 'class="link" style="font-size:14px"')}</div></div></div>` : ''}
@@ -650,7 +678,7 @@
   };
 
   S.verifying = () => {
-    const steps = isWise() ? ['Checking account details', 'Confirming account holder name', 'Securing your info'] : ['Checking SWIFT/BIC code', 'Confirming account holder name', 'Securing your info'];
+    const steps = isWise() ? ['Checking account details', 'Confirming account holder name', 'Securing your info'] : OM().verify;
     return page({
       head: header('Add payout method', { back: false }), prog: 4,
       body: `<div style="display:flex;flex-direction:column;align-items:center;padding-top:150px">
@@ -668,13 +696,13 @@
       body: `<h2 class="hero-title" style="margin-top:16px">Review your new payout method</h2>
         <p class="hero-body">Check these details before connecting.</p>
         <div class="card"><div class="method-card" style="padding-bottom:12px;border-bottom:1px solid var(--divider)">
-            <div class="method-logo ${wise ? 'wise' : 'bank'}">${wise ? WISE_MARK : I.globe}</div>
-            <div><div class="mt">${wise ? 'Wise account' : 'Wire transfer'}</div><div class="ms">${wise ? `${rail.scheme} · ${rail.speed}` : 'SWIFT · 7–10 days'}</div></div></div>
+            <div class="method-logo ${wise ? 'wise' : 'bank'}">${wise ? WISE_MARK : OM().logo()}</div>
+            <div><div class="mt">${wise ? 'Wise account' : OM().name}</div><div class="ms">${wise ? `${cur} · Arrives in seconds` : OM().sub}</div></div></div>
           <div class="kv"><span class="k">Account holder</span><span class="v">${CREATOR.name}</span></div>
           ${wise ? `<div class="kv"><span class="k">Wise email</span><span class="v">${esc(state.email)}</span></div>` : ''}
-          ${fields.map(f => `<div class="kv"><span class="k">${f.label}</span><span class="v">${f.key === 'wbank' ? esc(getVal(f.key)) : f.key === 'swift' ? esc(getVal(f.key).toUpperCase()) : mask(getVal(f.key))}</span></div>`).join('')}
-          <div class="kv"><span class="k">Payout currency</span><span class="v">${wise ? curLabel(cur) : '🇺🇸 USD'}</span></div>
-          <div class="kv"><span class="k">Minimum payout</span><span class="v">${wise ? 'USD 25' : 'USD 100'}</span></div>
+          ${fields.map(f => `<div class="kv"><span class="k">${f.label}</span><span class="v">${['wbank', 'ibank'].includes(f.key) ? esc(getVal(f.key)) : ['swift', 'ifsc'].includes(f.key) ? esc(getVal(f.key).toUpperCase()) : mask(getVal(f.key))}</span></div>`).join('')}
+          <div class="kv"><span class="k">Payout currency</span><span class="v">${wise ? curLabel(cur) : OM().currency}</span></div>
+          <div class="kv"><span class="k">Minimum payout</span><span class="v">${wise ? 'USD 25' : OM().min}</span></div>
         </div>
         <div class="banner info" style="margin-top:16px"><span class="bi">${I.info}</span><div><div class="bb">Future payouts can be sent to this account, starting with your next payout on <b style="color:var(--text)">${CREATOR.nextDate}</b>. You'll choose whether to make it your default next.</div></div></div>`,
       foot: `<button class="btn btn-primary" data-action="connect">Connect ${wise ? 'Wise account' : 'payout method'}</button>
@@ -686,10 +714,10 @@
     const wise = isWise();
     return page({
       head: header('', { back: false, right: `<button class="icon-btn" data-action="done" aria-label="Close">${I.close}</button>` }), prog: 5,
-      body: `${hero(ILLO.success(), wise ? 'Wise account added' : 'Wire transfer added',
-          wise ? `You can now get paid in ${state.currency} through ${LOCAL_RAILS[state.currency].scheme}, with lower conversion fees.` : 'You can now get paid by SWIFT wire transfer.')}
+      body: `${hero(ILLO.success(), wise ? 'Wise account added' : `${OM().name} added`,
+          wise ? `Your payouts will now arrive in your Wise account in ${state.currency} within seconds, with lower conversion fees.` : OM().successBody)}
         <div class="card"><div class="caption">Next payout</div><div class="big-amt">${CREATOR.nextPayout}</div>
-          <div class="caption">Expected ${CREATOR.nextDate} · to ${state.makeDefault ? (wise ? `Wise ${mask(getVal('acct') || getVal('iban'))}` : `${esc(getVal('wbank'))} ${mask(getVal('wacct'))}`) : `${CREATOR.bank} ••••${CREATOR.bankLast4}`}</div></div>
+          <div class="caption">Expected ${CREATOR.nextDate} · to ${state.makeDefault ? (wise ? `Wise ${mask(getVal('acct') || getVal('iban'))}` : `${esc(getVal(OM().bankKey))} ${mask(getVal(OM().acctKey))}`) : `${CREATOR.bank} ••••${CREATOR.bankLast4}`}</div></div>
         <div class="toggle-row" data-action="toggleDefault"><div><div class="tt">Make this my default payout method</div>
           <div class="ts">${state.makeDefault ? 'All future payouts will go here' : `Payouts will keep going to ${CREATOR.bank}`}</div></div>
           <span class="switch ${state.makeDefault ? 'on' : ''}" role="switch" aria-checked="${state.makeDefault}"></span></div>`,
@@ -701,7 +729,7 @@
   const sheetHtml = () => {
     const row = c => {
       const rail = LOCAL_RAILS[c];
-      const sub = c === 'INR' ? 'Local bank transfer · converted from USD' : rail ? `Unlocks ${rail.scheme} via Wise · ${rail.speed}` : 'Wire transfer (SWIFT) only';
+      const sub = c === 'INR' ? 'Local bank transfer · converted from USD' : rail ? `Unlocks Wise · Arrives in seconds` : 'Wire transfer (SWIFT) only';
       return `<div class="cur-row" data-action="pickcur" data-cur="${c}"><span class="flag">${CURRENCIES[c].flag}</span><div><div class="ct">${c} · ${CURRENCIES[c].name}</div><div class="cs">${sub}</div></div>
         ${state.currency === c ? `<span class="ck">${I.check}</span>` : ''}</div>`;
     };
@@ -812,8 +840,8 @@
         const wise = isWise();
         state.connected = {
           method: state.method, currency: state.currency, isDefault: state.makeDefault,
-          rail: wise ? LOCAL_RAILS[state.currency].scheme : 'SWIFT',
-          last4: mask(wise ? (getVal('acct') || getVal('iban')) : getVal('wacct')), bank: getVal('wbank'),
+          rail: wise ? LOCAL_RAILS[state.currency].scheme : OM().rail,
+          last4: mask(wise ? (getVal('acct') || getVal('iban')) : getVal(OM().acctKey)), bank: wise ? '' : getVal(OM().bankKey),
         };
         state.history = ['dash']; state.screen = 'payouts'; state.dir = 'back'; render(); break;
       }
